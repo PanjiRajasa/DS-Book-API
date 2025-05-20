@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import { db } from "./firebase";
 import admin from "firebase-admin";
 import bodyParser from "body-parser";
+import nodemailer from "nodemailer";
 
 const app = express();
 const PORT = 3000;
@@ -124,17 +125,35 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-//verify login token (must login first from front end, then send token to the backend)
+//POST - verify login token (must login first from front end, then send token to the backend)
 app.post('/verify-token', async (req, res) => {
-  const {idToken} = req.body; //token id
+  const {idToken} = req.body; //Get the token id key from req.body
 
   try {
-    const decoded = await admin.auth().verifyIdToken(idToken);
+    const decoded = await admin.auth().verifyIdToken(idToken); //Decode/verify the token
 
-    res.status(200).json({uid: decoded.uid});
+    res.status(200).json({uid: decoded.uid}); //Send 200 code and decoded uid
+
   } catch (error) {
     console.log(error); //display the error
-    res.status(401).json({error: "Invalid token"});
+    res.status(401).json({error: "Invalid token"}); //Send 401 (Unauthorized/not logged in yet)
+  }
+});
+
+//POST - Reset password
+app.post("/request-password-reset", async (req, res) => {
+  const {email} = req.body; //Get the email key from req.body
+
+  try {
+    
+    const link = await admin.auth().generatePasswordResetLink(email); //Generate password reset link for corresponded email
+
+    res.status(200).json({ message: "Reset link sent", link }); //Send 200 code, succeed message, and reset link
+  } catch (error) {
+
+    console.error(error); //Display error in the console
+    res.status(400).json({ error: "Failed to update profile" }); //Send 400 (400 Bad Request) and error message
+
   }
 });
 
@@ -145,32 +164,47 @@ app.put("/users/:uid", async (req, res) => {
 
   try {
     // Update data (if change happens)
-    const authUpdateData: admin.auth.UpdateRequest = {};
+    const authUpdateData: admin.auth.UpdateRequest = {}; //Empty object for store changed data to Firebase Auth
+
+    //update only the selected data (use if statements to determine)
     if (username) authUpdateData.displayName = username;
     if (email) authUpdateData.email = email;
     if (password) authUpdateData.password = password;
+
+    //if authUpdateData not empty -> Means there's a change
     if (Object.keys(authUpdateData).length > 0) {
-      await admin.auth().updateUser(uid, authUpdateData);
+      await admin.auth().updateUser(uid, authUpdateData); //update the user data
     }
 
     // Update Firestore
     const profileUpdateData: any = {
       updatedAt: new Date()
-    };
+    }; //Empty object for store changed data to Firebase Auth
+
+    /*
+      Note: Firebase Auth for store auth data (username, email, password) - Firestore for store collection data
+    */
+
+    //update only the selected data (use if statements to determine)
     if (username) profileUpdateData.username = username;
     if (firstname) profileUpdateData.firstname = firstname;
     if (lastname) profileUpdateData.lastname = lastname;
     if (contactNumber) profileUpdateData.contactNumber = contactNumber;
     if (email) profileUpdateData.email = email;
 
-    await db.collection('users').doc(uid).update(profileUpdateData);
+    await db.collection('users').doc(uid).update(profileUpdateData); //Update users collection
 
-    res.status(200).json({ message: "Profile updated" });
+    res.status(200).json({ message: "Profile updated" }); //Send 200 code and success message
+
   } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: "Failed to update profile" });
+
+    console.error(err); //Display error in the console
+    res.status(400).json({ error: "Failed to update profile" }); //Send 400 (400 Bad Request) and error message
+
   }
 });
+
+//POST Email subscription
 
 
 app.listen(PORT, function() {console.log(`It's alive on http://localhost:${PORT}`)}); //Set server port and display it to console
