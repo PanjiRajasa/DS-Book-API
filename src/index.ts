@@ -3,10 +3,24 @@ import { db } from "./firebase";
 import admin from "firebase-admin";
 import bodyParser from "body-parser";
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+import { TransactionalEmailsApi, SendSmtpEmail } from "@getbrevo/brevo";
 
+//Basic configuration
 const app = express();
 const PORT = 3000;
+dotenv.config();
+app.use(express.json());
 
+//Brevo configuration
+dotenv.config();
+
+//we use JS syntax instead so if an error occurs, we can fix it easy (the documentation write in JS syntax)
+const SibApiV3Sdk = require('sib-api-v3-sdk'); //require the sib-api-v3-sdk
+const defaultClient = SibApiV3Sdk.ApiClient.instance; //default client
+const apiKey = defaultClient.authentications['api-key']; //authentication type
+apiKey.apiKey = process.env.BREVO_API_KEY; //API key that stored in the .env
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi(); //Make API instance
 
 // Parse application/json
 app.use(bodyParser.json());
@@ -87,6 +101,10 @@ app.get("/shop", async (req, res) => {
   }
 });
 
+//GET shops detail
+app.get("/shop/:shopId", async (req, res) => {
+  const {shopId} = req.body; //Get the shopId string query
+});
 
 //POST signup
 app.post("/signup", async (req, res) => {
@@ -205,6 +223,40 @@ app.put("/users/:uid", async (req, res) => {
 });
 
 //POST Email subscription
+app.post("/subscribe", async (req, res) => {
+  const {email} = req.body; //Get the email key from req.body
 
+  //If email empty
+  if(!email) {
+    res.status(400).json({error: "Email is required"});
+  }
+
+  try {
+
+    //Save to subscription collection
+    await db.collection("subscriptions").add({
+      email,
+      subscirbeAt: new Date()
+    });
+
+    //kirim email welcome / konfirmasi
+    const sendSmtpEmail = new SendSmtpEmail();
+    
+    //configure the sendSmtpEmail properties setting
+    sendSmtpEmail.to = [{email: email}]; //send email to
+    sendSmtpEmail.sender = {email: "panjirajasap@gmail.com", name: "DS Book"}; //sender's email and name
+    sendSmtpEmail.subject = "Subcription Successful"; //email subject
+    sendSmtpEmail.htmlContent = `<html><body><h1>Thank you for subscribing!</h1></body></html>`; //email content
+
+    await apiInstance.sendTransacEmail(sendSmtpEmail); //send the subscription email
+    
+    res.status(200).json({message: "Subscription succesful"}); //Send 200 code and success message
+  } catch (error) {
+
+    console.log(error); //display the error
+    res.status(500).json({error: "Failed to subscribe"}); //server error handling
+
+  }
+});
 
 app.listen(PORT, function() {console.log(`It's alive on http://localhost:${PORT}`)}); //Set server port and display it to console
