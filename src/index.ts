@@ -2,19 +2,21 @@ import express, { Request, Response } from "express";
 import { db } from "./firebase";
 import admin from "firebase-admin";
 import bodyParser from "body-parser";
-import nodemailer from "nodemailer";
+import cors from "cors";
 import dotenv from "dotenv";
-import { TransactionalEmailsApi, SendSmtpEmail } from "@getbrevo/brevo";
-
+import { SendSmtpEmail } from "@getbrevo/brevo";
+dotenv.config(); //Manage environemnt variable from .env file
 //Basic configuration
 const app = express();
 const PORT = 3000;
-dotenv.config();
-app.use(express.json());
+
+
+app.use(express.json()); //Parse the JSON request body into a JavaScript object.
+
+app.use(cors()); //Enable cross-domain communication (CORS) for your API.
+
 
 //Brevo configuration
-dotenv.config();
-
 //we use JS syntax instead so if an error occurs, we can fix it easy (the documentation write in JS syntax)
 const SibApiV3Sdk = require('sib-api-v3-sdk'); //require the sib-api-v3-sdk
 const defaultClient = SibApiV3Sdk.ApiClient.instance; //default client
@@ -35,7 +37,6 @@ app.use(function(req, res, next) {
 
     next();
 });
-
 
 //GET products
 app.get("/products", async (req, res) => {
@@ -81,6 +82,70 @@ app.get("/products/:productId", async (req, res) => {
   }
 });
 
+//POST products
+app.post('/products', async (req, res) => {
+  try {
+    const { name, image, description, summary, price } = req.body; //data from req.body
+
+    //null checking
+    if (!name || !image || !description || !summary || !price) {
+      res.status(400).json({ message: 'Please insert all data' });
+    }
+
+    //new data
+    const newProduct = {
+      name,
+      image,
+      description,
+      summary,
+      price,
+      createdAt: new Date(),
+    };
+
+    const docRef = await db.collection('products').add(newProduct); //add new document to the collection
+
+    res.status(201).json({ message: 'Product created', id: docRef.id }); //success message
+
+  } catch (error) {
+
+    //error handling and send 500 code
+    console.error('Error creating product:', error);
+    res.status(500).json({ message: 'Internal server error' });
+
+  }
+});
+
+//PUT products
+app.put("/products/:productId", async (req, res): Promise<any> => {
+  const { productId } = req.params;
+  const { name, price, description, summary, image } = req.body;
+
+  if (!productId) {
+    return res.status(400).json({ error: "Product ID is required" });
+  }
+
+  try {
+    // Buat objek data yang akan diupdate
+    const updateData: any = {
+      updatedAt: new Date()
+    };
+
+    if (name) updateData.name = name;
+    if (price) updateData.price = price;
+    if (description) updateData.description = description;
+    if (summary !== undefined) updateData.summary = summary;
+    if (image) updateData.image = image;
+
+    await db.collection("products").doc(productId).update(updateData);
+
+    res.status(200).json({ message: "Product updated successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update product" });
+  }
+});
+
+
 //GET shops data
 app.get("/shop", async (req, res) => {
   try {
@@ -103,8 +168,108 @@ app.get("/shop", async (req, res) => {
 
 //GET shops detail
 app.get("/shop/:shopId", async (req, res) => {
-  const {shopId} = req.body; //Get the shopId string query
+  const {shopId} = req.params; //Get the shopId string query
+
+  try {
+    const doc = await db.collection("shop").doc(shopId).get(); //get the shops collection data based on the ID
+
+    //if the shop did not exist (wrong ID)
+    if(!doc.exists) {
+      
+      res.status(404).json({error: "Shop not found"}); //return 404 and error message
+
+    } else {
+
+      const productData = doc.data(); //get the shop data
+      res.status(200).json(productData); //return 200 and display the data as JSON
+
+    }
+
+  } catch (error) {
+
+    console.error(error); //display the error message
+    res.status(500).json({ error: "Failed to fetch shop" }); //return 500 (error from server)
+
+  }
 });
+
+//POST shop data
+app.post('/shop', async (req, res) => {
+  try {
+    const { name, address, image, detail, rate } = req.body; //data from req.body
+
+    //null checking
+    if (!address || !image || !detail || !name || !rate) {
+      res.status(400).json({ message: 'Please insert all data' });
+    }
+
+    //new data
+    const newProduct = {
+      address,
+      image,
+      detail,
+      name,
+      rate,
+      createdAt: new Date(),
+    };
+
+    const docRef = await db.collection('shop').add(newProduct); //add new document to the collection
+
+    res.status(201).json({ message: 'Shop created', id: docRef.id }); //success message
+
+  } catch (error) {
+
+    //error handling and send 500 code
+    console.error('Error creating shop:', error);
+    res.status(500).json({ message: 'Internal server error' });
+
+  }
+});
+
+//GET users data
+app.get("/users", async (req, res) => {
+  try {
+    const snapshot = await db.collection('users').get(); //get the users collection
+
+    const users = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })); //map the users
+
+    res.status(200).json(users); //send the response as a JSON also with 200 code
+  } catch(err) {
+    console.error(err); //display the error
+    res.status(500).json({ error: 'Failed to fetch users.' }); //server error handling
+  }
+});
+
+//GET users detail
+app.get("/users/:userId", async (req, res) => {
+  const {userId} = req.params; //Get the shopId string query
+
+  try {
+
+    const doc = await db.collection("users").doc(userId).get(); //get the users collection data based on the ID
+
+    //if the user did not exist (wrong ID)
+    if(!doc.exists) {
+
+      res.status(404).json({error: "User not found"}); //return 404 and error message
+
+    } else {
+
+      const userData = doc.data(); //get the shop data
+      res.status(200).json(userData); //return 200 and display the data as JSON
+
+    }
+    
+  } catch (error) {
+
+    console.log(error); //display the error message
+    res.status(500).json({error: "Failed to fetch user"}); //return 500 (error from server)
+
+  }
+})
 
 //POST signup
 app.post("/signup", async (req, res) => {
@@ -125,7 +290,8 @@ app.post("/signup", async (req, res) => {
       lastname: null,
       contactNumber: null,
       createdAt: new Date(),
-      updatedAt: null
+      updatedAt: null,
+      image: null
     });
 
     //save extra data to the firestore
@@ -178,13 +344,14 @@ app.post("/request-password-reset", async (req, res) => {
 //PUT Edit profile
 app.put("/users/:uid", async (req, res) => {
   const { uid } = req.params; //get the uid
-  const { username, firstname, lastname, contactNumber, email, password } = req.body; //get the data detail from the req.body 
+  const { username, firstname, lastname, contactNumber, email, password, image } = req.body; //get the data detail from the req.body 
 
   try {
-    // Update data (if change happens)
+    // Update auth data (if change happens)
     const authUpdateData: admin.auth.UpdateRequest = {}; //Empty object for store changed data to Firebase Auth
 
     //update only the selected data (use if statements to determine)
+    //Auth data can only contains username, email, password. Other data will be stored in the firestore
     if (username) authUpdateData.displayName = username;
     if (email) authUpdateData.email = email;
     if (password) authUpdateData.password = password;
@@ -194,7 +361,7 @@ app.put("/users/:uid", async (req, res) => {
       await admin.auth().updateUser(uid, authUpdateData); //update the user data
     }
 
-    // Update Firestore
+    // Update Firestore (auth data and other data such as firstname)
     const profileUpdateData: any = {
       updatedAt: new Date()
     }; //Empty object for store changed data to Firebase Auth
@@ -209,6 +376,7 @@ app.put("/users/:uid", async (req, res) => {
     if (lastname) profileUpdateData.lastname = lastname;
     if (contactNumber) profileUpdateData.contactNumber = contactNumber;
     if (email) profileUpdateData.email = email;
+    if (image) profileUpdateData.image = image;
 
     await db.collection('users').doc(uid).update(profileUpdateData); //Update users collection
 
@@ -257,6 +425,198 @@ app.post("/subscribe", async (req, res) => {
     res.status(500).json({error: "Failed to subscribe"}); //server error handling
 
   }
+});
+
+
+// POST /carts/add
+app.post("/carts/add", async (req, res): Promise<any> => {
+  const { uid, productId, quantity } = req.body;
+  
+  if (!uid || !productId || !quantity) {
+    res.status(400).json({ error: "User ID, product ID, and quantity required" });
+    return;
+  }
+  
+  try {
+    // Menggunakan cartId yang unik berdasarkan kombinasi uid dan productId
+    const cartId = `${uid}_${productId}`;
+    
+    // Mendapatkan info produk untuk disimpan di cart
+    const productDoc = await db.collection("products").doc(productId).get();
+    const product = productDoc.data();
+    
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    
+    await db.collection("carts").doc(cartId).set({
+      uid,
+      productId,
+      quantity,
+      productName: product.name,
+      productImage: product.image,
+      price: product.price,
+      totalPrice: product.price * quantity,
+      addedAt: new Date()
+    });
+    
+    res.status(200).json({ message: "Item added to cart" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Failed to add item to cart"});
+  }
+});
+
+// POST /orders/create
+app.post("/orders/create", async (req, res): Promise<any> => {
+  const { uid } = req.body;
+  
+  if (!uid) {
+    return res.status(400).json({ error: "User ID required" });
+  }
+  
+  try {
+    // 1. Ambil semua item di keranjang pengguna
+    const cartSnapshot = await db.collection("carts").where("uid", "==", uid).get();
+    
+    if (cartSnapshot.empty) {
+      return res.status(400).json({ error: "Cart is empty" });
+    }
+    
+    // 2. Konversi data cart menjadi array item untuk order
+    const items: any = [];
+    let totalAmount = 0;
+    
+    cartSnapshot.forEach(doc => {
+      const cartItem = doc.data();
+      totalAmount += cartItem.totalPrice;
+      items.push({
+        productId: cartItem.productId,
+        productName: cartItem.productName,
+        productImage: cartItem.productImage,
+        quantity: cartItem.quantity,
+        price: cartItem.price,
+        totalPrice: cartItem.totalPrice
+      });
+    });
+    
+    // 3. Buat order baru dengan judul dan timestamp untuk history
+    const orderRef = await db.collection("orders").add({
+      userId: uid,
+      title: `Order #${new Date().getTime().toString().slice(-6)}`, // Membuat judul order dengan nomor unik
+      items,
+      totalItems: items.length,
+      totalAmount,
+      status: "pending",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    
+    // 4. Hapus keranjang pengguna setelah order berhasil dibuat
+    const deletePromises = cartSnapshot.docs.map((doc) => doc.ref.delete());
+    await Promise.all(deletePromises);
+    
+    // 5. Tambahkan juga ke koleksi order_history untuk memudahkan query
+    await db.collection("order_history").doc(orderRef.id).set({
+      orderId: orderRef.id,
+      userId: uid,
+      title: `Order #${new Date().getTime().toString().slice(-6)}`,
+      totalAmount,
+      totalItems: items.length,
+      status: "pending",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    
+    res.status(200).json({ 
+      message: "Order placed successfully", 
+      orderId: orderRef.id 
+    });
+    
+  } catch (err) {
+    console.error("Order error:", err);
+    res.status(500).json({ error: "Failed to place order"});
+  }
+});
+
+// GET /orders/history/:uid
+app.get("/orders/history/:uid", async (req, res): Promise<any> => {
+  const { uid } = req.params;
+  
+  if (!uid) {
+    return res.status(400).json({ error: "User ID required" });
+  }
+  
+  try {
+    const historySnapshot = await db.collection("order_history")
+      .where("userId", "==", uid)
+      .orderBy("createdAt", "desc")
+      .get();
+    
+    if (historySnapshot.empty) {
+      return res.status(200).json({ orders: [] });
+    }
+    
+    const orders: any = [];
+    historySnapshot.forEach(doc => {
+      const orderData = doc.data();
+      orders.push({
+        id: doc.id,
+        title: orderData.title,
+        date: orderData.createdAt.toDate(), // Convert Firestore timestamp to JS Date
+        status: orderData.status,
+        totalAmount: orderData.totalAmount,
+        totalItems: orderData.totalItems
+      });
+    });
+    
+    res.status(200).json({ orders });
+  } catch (err) {
+    console.error("Get order history error:", err);
+    res.status(500).json({ error: "Failed to get order history" });
+  }
+});
+
+
+// GET /orders/:orderId
+app.get("/orders/:orderId", async (req, res): Promise<any> => {
+  const { orderId } = req.params;
+  
+  if (!orderId) {
+    return res.status(400).json({ error: "Order ID required" });
+  }
+  
+  try {
+    const orderDoc = await db.collection("orders").doc(orderId).get();
+    
+    if (!orderDoc.exists) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    
+    const orderData: any = orderDoc.data();
+    
+    res.status(200).json({ 
+      order: {
+        id: orderDoc.id,
+        title: orderData.title,
+        date: orderData.createdAt.toDate(),
+        status: orderData.status,
+        totalAmount: orderData.totalAmount,
+        items: orderData.items,
+        userId: orderData.userId
+      } 
+    });
+  } catch (err) {
+    console.error("Get order details error:", err);
+    res.status(500).json({ error: "Failed to get order details" });
+  }
+});
+
+
+// Optional: Middleware to handle global mistake
+app.use(async (req, res, next) => {
+  res.status(500).json({ error: 'Something went wrong!' });
+  next();
 });
 
 app.listen(PORT, function() {console.log(`It's alive on http://localhost:${PORT}`)}); //Set server port and display it to console
