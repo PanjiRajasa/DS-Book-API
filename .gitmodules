@@ -1,0 +1,3 @@
+[submodule "dsbook-pages"]
+	path = dsbook-pages
+	url = https://github.com/santanuraga/DSBook.git
