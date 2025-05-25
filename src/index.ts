@@ -5,15 +5,18 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import { SendSmtpEmail } from "@getbrevo/brevo";
-dotenv.config(); //Manage environemnt variable from .env file
+import productRoutes from "./routes/productRoutes";
+import shopRoutes from "./routes/shopRoutes";
+
 //Basic configuration
 const app = express();
 const PORT = 3000;
+dotenv.config(); //Manage environemnt variable from .env file
 
 
 app.use(express.json()); //Parse the JSON request body into a JavaScript object.
-
 app.use(cors()); //Enable cross-domain communication (CORS) for your API.
+app.listen(PORT, function() {console.log(`It's alive on http://localhost:${PORT}`)}); //Set server port and display it to console
 
 
 //Brevo configuration
@@ -24,12 +27,6 @@ const apiKey = defaultClient.authentications['api-key']; //authentication type
 apiKey.apiKey = process.env.BREVO_API_KEY; //API key that stored in the .env
 const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi(); //Make API instance
 
-// Parse application/json
-app.use(bodyParser.json());
-
-// Optional: Parse application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded({ extended: true }));
-
 //middleware logging
 app.use(function(req, res, next) {
     console.log(`request method: ${req.method}`);
@@ -38,193 +35,16 @@ app.use(function(req, res, next) {
     next();
 });
 
-//GET products
-app.get("/products", async (req, res) => {
-  try {
-    const snapshot = await db.collection('products').get(); //get the products collection
-
-    const products = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })); //map the product
-
-    res.status(200).json(products); //send the response as a JSON also with 200 code
-  } catch(err) {
-    console.error(err); //display the error
-    res.status(500).json({ error: 'Failed to fetch products.' }); //server error handling
-  }
+//Basic route
+app.get("/", (req, res) => {
+  res.send("API is running!");
 });
 
-//GET detail products
-app.get("/products/:productId", async (req, res) => {
-  const {productId} = req.params; //Get the productId string query
+//products routes (/products)
+app.use("/products", productRoutes);
 
-  try {
-    const doc = await db.collection("products").doc(productId).get(); //get the products collection data based on the ID
-
-    //if the prodcut did not exist (wrong ID)
-    if(!doc.exists) {
-      
-      res.status(404).json({error: "Product not found"}); //return 404 and error message
-
-    } else {
-
-      const productData = doc.data(); //get the products data
-      res.status(200).json(productData); //return 200 and display the data as JSON
-
-    }
-
-  } catch (error) {
-
-    console.error(error); //display the error message
-    res.status(500).json({ error: "Failed to fetch product" }); //return 500 (error from server)
-
-  }
-});
-
-//POST products
-app.post('/products', async (req, res) => {
-  try {
-    const { name, image, description, summary, price } = req.body; //data from req.body
-
-    //null checking
-    if (!name || !image || !description || !summary || !price) {
-      res.status(400).json({ message: 'Please insert all data' });
-    }
-
-    //new data
-    const newProduct = {
-      name,
-      image,
-      description,
-      summary,
-      price,
-      createdAt: new Date(),
-    };
-
-    const docRef = await db.collection('products').add(newProduct); //add new document to the collection
-
-    res.status(201).json({ message: 'Product created', id: docRef.id }); //success message
-
-  } catch (error) {
-
-    //error handling and send 500 code
-    console.error('Error creating product:', error);
-    res.status(500).json({ message: 'Internal server error' });
-
-  }
-});
-
-//PUT products
-app.put("/products/:productId", async (req, res): Promise<any> => {
-  const { productId } = req.params;
-  const { name, price, description, summary, image } = req.body;
-
-  if (!productId) {
-    return res.status(400).json({ error: "Product ID is required" });
-  }
-
-  try {
-    // Buat objek data yang akan diupdate
-    const updateData: any = {
-      updatedAt: new Date()
-    };
-
-    if (name) updateData.name = name;
-    if (price) updateData.price = price;
-    if (description) updateData.description = description;
-    if (summary !== undefined) updateData.summary = summary;
-    if (image) updateData.image = image;
-
-    await db.collection("products").doc(productId).update(updateData);
-
-    res.status(200).json({ message: "Product updated successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to update product" });
-  }
-});
-
-
-//GET shops data
-app.get("/shop", async (req, res) => {
-  try {
-    const snapshot = await db.collection('shop').get(); //get the shop collection
-
-    const shop = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })); //map the shop
-
-    res.status(200).json(shop); //send the response as a JSON also with 200 code
-
-  } catch(err) {
-
-    console.error(err); //display the error
-    res.status(500).json({ error: 'Failed to fetch shop.' }); //server error handling
-
-  }
-});
-
-//GET shops detail
-app.get("/shop/:shopId", async (req, res) => {
-  const {shopId} = req.params; //Get the shopId string query
-
-  try {
-    const doc = await db.collection("shop").doc(shopId).get(); //get the shops collection data based on the ID
-
-    //if the shop did not exist (wrong ID)
-    if(!doc.exists) {
-      
-      res.status(404).json({error: "Shop not found"}); //return 404 and error message
-
-    } else {
-
-      const productData = doc.data(); //get the shop data
-      res.status(200).json(productData); //return 200 and display the data as JSON
-
-    }
-
-  } catch (error) {
-
-    console.error(error); //display the error message
-    res.status(500).json({ error: "Failed to fetch shop" }); //return 500 (error from server)
-
-  }
-});
-
-//POST shop data
-app.post('/shop', async (req, res) => {
-  try {
-    const { name, address, image, detail, rate } = req.body; //data from req.body
-
-    //null checking
-    if (!address || !image || !detail || !name || !rate) {
-      res.status(400).json({ message: 'Please insert all data' });
-    }
-
-    //new data
-    const newProduct = {
-      address,
-      image,
-      detail,
-      name,
-      rate,
-      createdAt: new Date(),
-    };
-
-    const docRef = await db.collection('shop').add(newProduct); //add new document to the collection
-
-    res.status(201).json({ message: 'Shop created', id: docRef.id }); //success message
-
-  } catch (error) {
-
-    //error handling and send 500 code
-    console.error('Error creating shop:', error);
-    res.status(500).json({ message: 'Internal server error' });
-
-  }
-});
+//shop routes (/shop)
+app.use("/shop", shopRoutes);
 
 //GET users data
 app.get("/users", async (req, res) => {
@@ -618,5 +438,3 @@ app.use(async (req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
   next();
 });
-
-app.listen(PORT, function() {console.log(`It's alive on http://localhost:${PORT}`)}); //Set server port and display it to console
