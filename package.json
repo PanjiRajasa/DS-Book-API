@@ -26,18 +26,17 @@
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "dotenv": "^16.5.0",
-    "express": "^5.1.0",
-    "firebase": "^11.8.0",
+    "express": "^4.20.0",
+    "firebase": "^11.8.1",
     "firebase-admin": "^13.4.0",
     "googleapis": "^149.0.0",
     "nodemailer": "^7.0.3",
     "sib-api-v3-sdk": "^8.5.0",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^4.6.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.18",
-    "@types/express": "^5.0.2",
     "@types/node": "^22.15.21",
     "@types/nodemailer": "^6.4.17",
     "@types/swagger-jsdoc": "^6.0.4",
