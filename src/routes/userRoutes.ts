@@ -159,62 +159,101 @@ router.post("/request-password-reset", async (req: Request<EmailReset>, res: Res
 });
 
 //PUT Edit profile
-interface UserData {
-    uid: string,
-    username: string,
-    firstname: string,
-    lastname: string,
-    contactNumber: string,
-    email: string,
-    password: string,
-    image: string
-}
+//PUT Edit profile
+router.put("/:uid", async (req, res): Promise<any> => {
+    const { uid } = req.params;
+    const { username, firstname, lastname, contactNumber, email, password, image } = req.body;
 
-router.put("/:uid", async (req: Request<UserData>, res: Response): Promise<any> => {
-    const { uid } = req.params; //get the uid
-    const { username, firstname, lastname, contactNumber, email, password, image } = req.body; //get the data detail from the req.body 
+    // Debug logging
+    console.log("=== PUT /users/:uid DEBUG ===");
+    console.log("UID from params:", uid);
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    console.log("Content-Type:", req.get('Content-Type'));
+    console.log("Request method:", req.method);
+    console.log("============================");
+
+    // Validation
+    if (!uid) {
+        console.log("ERROR: No UID provided");
+        return res.status(400).json({ error: "User ID is required" });
+    }
+
+    if (!username && !firstname && !lastname && !contactNumber && !email && !password && !image) {
+        console.log("ERROR: No data provided for update");
+        return res.status(400).json({ error: "At least one field must be provided for update" });
+    }
 
     try {
         // Update auth data (if change happens)
-        const authUpdateData: admin.auth.UpdateRequest = {}; //Empty object for store changed data to Firebase Auth
+        const authUpdateData: admin.auth.UpdateRequest = {};
 
-        //update only the selected data (use if statements to determine)
-        //Auth data can only contains username, email, password. Other data will be stored in the firestore
-        if (username) authUpdateData.displayName = username;
-        if (email) authUpdateData.email = email;
-        if (password) authUpdateData.password = password;
-
-        //if authUpdateData not empty -> Means there's a change
-        if (Object.keys(authUpdateData).length > 0) {
-            await admin.auth().updateUser(uid, authUpdateData); //update the user data
+        if (username && username.trim().length > 0) {
+            console.log("Will update displayName to:", username);
+            authUpdateData.displayName = username;
+        }
+        if (email && email.trim().length > 0) {
+            console.log("Will update email to:", email);
+            authUpdateData.email = email;
+        }
+        if (password && password.trim().length > 0) {
+            console.log("Will update password (length):", password.length);
+            authUpdateData.password = password;
         }
 
-        // Update Firestore (auth data and other data such as firstname)
+        // Update Firebase Auth if needed
+        if (Object.keys(authUpdateData).length > 0) {
+            console.log("Updating Firebase Auth with:", Object.keys(authUpdateData));
+            await admin.auth().updateUser(uid, authUpdateData);
+            console.log("Firebase Auth updated successfully");
+        } else {
+            console.log("No Firebase Auth updates needed");
+        }
+
+        // Update Firestore
         const profileUpdateData: any = {
             updatedAt: new Date()
-        }; //Empty object for store changed data to Firebase Auth
+        };
 
-        /*
-          Note: Firebase Auth for store auth data (username, email, password) - Firestore for store collection data
-        */
+        if (username && username.trim().length > 0) profileUpdateData.username = username;
+        if (firstname && firstname.trim().length > 0) profileUpdateData.firstname = firstname;
+        if (lastname && lastname.trim().length > 0) profileUpdateData.lastname = lastname;
+        if (contactNumber && contactNumber.trim().length > 0) profileUpdateData.contactNumber = contactNumber;
+        if (email && email.trim().length > 0) profileUpdateData.email = email;
+        if (image && image.trim().length > 0) profileUpdateData.image = image;
 
-        //update only the selected data (use if statements to determine)
-        if (username) profileUpdateData.username = username;
-        if (firstname) profileUpdateData.firstname = firstname;
-        if (lastname) profileUpdateData.lastname = lastname;
-        if (contactNumber) profileUpdateData.contactNumber = contactNumber;
-        if (email) profileUpdateData.email = email;
-        if (image) profileUpdateData.image = image;
+        console.log("Updating Firestore with:", JSON.stringify(profileUpdateData, null, 2));
+        await db.collection('users').doc(uid).update(profileUpdateData);
+        console.log("Firestore updated successfully");
 
-        await db.collection('users').doc(uid).update(profileUpdateData); //Update users collection
+        res.status(200).json({ message: "Profile updated successfully" });
 
-        res.status(200).json({ message: "Profile updated" }); //Send 200 code and success message
+    } catch (err: any) {
+        console.error('=== UPDATE PROFILE ERROR ===');
+        console.error('Error type:', err.constructor.name);
+        console.error('Error code:', err.code);
+        console.error('Error message:', err.message);
+        console.error('Full error:', err);
+        console.error('============================');
 
-    } catch (err) {
+        // More specific error handling
+        if (err.code === 'auth/user-not-found') {
+            return res.status(404).json({ error: "User not found" });
+        }
+        if (err.code === 'auth/email-already-in-use') {
+            return res.status(409).json({ error: "Email already in use" });
+        }
+        if (err.code === 'auth/invalid-email') {
+            return res.status(400).json({ error: "Invalid email format" });
+        }
+        if (err.code === 'auth/weak-password') {
+            return res.status(400).json({ error: "Password is too weak" });
+        }
 
-        console.error(err); //Display error in the console
-        res.status(400).json({ error: "Failed to update profile" }); //Send 400 (400 Bad Request) and error message
-
+        res.status(500).json({ 
+            error: "Failed to update profile", 
+            details: err.message,
+            code: err.code 
+        });
     }
 });
 

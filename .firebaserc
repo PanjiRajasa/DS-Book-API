@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "ds-book-database",
+    "fb_configuration": "ds-book-database",
+    "staging": "ds-book-database"
+  },
+  "targets": {},
+  "etags": {}
+}

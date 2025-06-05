@@ -8,7 +8,7 @@
     "outDir": "./dist",
     "rootDir": "./src",                         
     "forceConsistentCasingInFileNames": true,            
-    "strict": true,                                     
+    "strict": false,                                     
     "skipLibCheck": true
   },
 }

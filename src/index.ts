@@ -26,7 +26,7 @@ app.use(function(req, res, next) {
 
 // Konfigurasi CORS yang mengizinkan origin tertentu
 const corsOptions = {
-  origin: ["http://localhost:5501", "http://127.0.0.1:5501"], // Ganti sesuai port frontend kamu
+  origin: ["http://localhost:5501", "http://127.0.0.1:5501", "http://127.0.0.1:5500", ], // Ganti sesuai port frontend kamu
   credentials: true, // Jika kamu pakai cookies (optional)
 };
 
@@ -52,41 +52,57 @@ app.use("/users", userRoutes);
 // POST /carts/add
 app.post("/carts/add", async (req, res): Promise<any> => {
   const { uid, productId, quantity } = req.body;
-  
+
   if (!uid || !productId || !quantity) {
-    res.status(400).json({ error: "User ID, product ID, and quantity required" });
-    return;
+    return res.status(400).json({ error: "User ID, product ID, and quantity required" });
   }
-  
+
   try {
-    // Menggunakan cartId yang unik berdasarkan kombinasi uid dan productId
     const cartId = `${uid}_${productId}`;
-    
-    // Mendapatkan info produk untuk disimpan di cart
+    const cartRef = db.collection("carts").doc(cartId);
+    const cartDoc = await cartRef.get();
+
     const productDoc = await db.collection("products").doc(productId).get();
     const product = productDoc.data();
-    
+
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
-    
-    await db.collection("carts").doc(cartId).set({
-      uid,
-      productId,
-      quantity,
-      productName: product.name,
-      productImage: product.image,
-      price: product.price,
-      totalPrice: product.price * quantity,
-      addedAt: new Date()
-    });
-     
-    res.status(200).json({ message: "Item added to cart" });
+
+    if (cartDoc.exists) {
+      // Item sudah ada di keranjang → update kuantitas dan total
+      const existingData = cartDoc.data();
+      const newQuantity = existingData.quantity + quantity;
+      const newTotal = product.price * newQuantity;
+
+      await cartRef.update({
+        quantity: newQuantity,
+        totalPrice: newTotal,
+        addedAt: new Date()  // Optional: bisa simpan waktu update juga
+      });
+
+      return res.status(200).json({ message: "Cart item updated (quantity increased)" });
+    } else {
+      // Item belum ada → buat baru
+      await cartRef.set({
+        uid,
+        productId,
+        quantity,
+        productName: product.name,
+        productImage: product.image,
+        price: product.price,
+        totalPrice: product.price * quantity,
+        addedAt: new Date()
+      });
+
+      return res.status(200).json({ message: "Item added to cart" });
+    }
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Failed to add item to cart"});
+    console.error(err);
+    return res.status(500).json({ error: "Failed to add item to cart" });
   }
 });
+
 
 // POST /orders/create
 app.post("/orders/create", async (req, res): Promise<any> => {
@@ -232,6 +248,44 @@ app.get("/orders/:orderId", async (req, res): Promise<any> => {
     res.status(500).json({ error: "Failed to get order details" });
   }
 });
+
+
+// GET /carts/:cartId
+app.get("/carts/:uid", async (req, res): Promise<any> => {
+  const { uid } = req.params;
+
+  if (!uid) {
+    return res.status(400).json({ error: "User ID required" });
+  }
+
+  try {
+    // Query carts where uid == uid
+    const cartSnapshot = await db.collection("carts").where("uid", "==", uid).get();
+
+    if (cartSnapshot.empty) {
+      return res.status(200).json([]); // atau json({ cart: [] })
+    }
+
+    const carts = cartSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        productId: data.productId,
+        quantity: data.quantity,
+        name: data.productName,
+        imageUrl: data.productImage,
+        price: data.price
+      };
+    });
+
+    res.status(200).json(carts);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to get carts" });
+  }
+});
+
 
  
 // Optional: Middleware to handle global mistake
